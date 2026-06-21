@@ -56,5 +56,5 @@ npm run build
 
 ## Notes
 The extension entry point is defined by manifest.json. 
-Assets are copied into dist during build so popup.html, manifest.json, and assets/ are available for the browser to load. 
+
 
