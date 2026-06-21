@@ -2,6 +2,8 @@
 
 A minimal Chrome extension that summarises the current web page instantly — no API keys or external services required.
 
+https://github.com/user-attachments/assets/9dc2a34a-fc07-4d15-a9ee-2a1cba7259da
+
 ## Repository Structure
 
 - `manifest.json` — extension manifest (metadata, permissions, background/popup config)
@@ -47,13 +49,8 @@ Users can load the extension unpacked during development:
 - Select manifest.json or the extension folder.
 - This allows users to test your extension locally without packaging it.
 
-**Microsoft Edge**
 
-- Open edge://extensions in the address bar.
-- Turn on Developer mode (toggle in the bottom-left corner).
-- Click **Load unpacked**.
-- Select your extension’s folder — the one containing manifest.json.
-- Edge will load it immediately, and you’ll see it appear in the extensions list.
-- If your extension has a popup, click the toolbar icon to test it.
-- For background scripts or service workers, use the Inspect link inside the extension card.
+
+
+
 
