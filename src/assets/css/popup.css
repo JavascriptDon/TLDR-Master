@@ -127,7 +127,61 @@ h2 {
 
 html[data-theme="dark"] #theme-btn .icon-moon { display: block; }
 html[data-theme="dark"] #theme-btn .icon-sun  { display: none; }
+/* Tab Switcher */
+.tabs {
+  display: flex;
+  background: var(--bg-secondary, #f1f3f4);
+  border-radius: 8px;
+  padding: 4px;
+  margin-bottom: 16px;
+}
+.tab-btn {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-secondary, #5f6368);
+  transition: all 0.2s;
+}
+.tab-btn.active {
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #202124);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+[data-theme="dark"] .tab-btn.active {
+  background: var(--bg-primary-dark, #2d2e31);
+  color: var(--text-primary-dark, #e8eaed);
+}
 
+/* File Upload Section */
+.file-section { margin-bottom: 16px; }
+.file-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: 2px dashed var(--border-color, #dadce0);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-secondary, #5f6368);
+  transition: all 0.2s;
+}
+.file-label:hover {
+  border-color: var(--primary-color, #1a73e8);
+  color: var(--primary-color, #1a73e8);
+  background: var(--hover-bg, rgba(26,115,232,0.04));
+}
+.file-name {
+  margin-top: 8px;
+  font-size: 0.9em;
+  color: var(--text-secondary, #5f6368);
+  text-align: center;
+  word-break: break-all;
+}
 /* ── Page meta (word count / reading time) ── */
 .page-meta {
   display: flex;

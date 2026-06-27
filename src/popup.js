@@ -68,6 +68,94 @@ document.getElementById('theme-btn').addEventListener('click', () => {
 
 // ── State ──────────────────────────────────────────────────────────────────
 let bulletCount = 5;
+let activeTab = 'page';
+let fileParagraphs = [];
+
+// ── Tab Switching Logic ────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+
+    const fileSection = document.getElementById('file-section');
+    const summarizeBtn = document.getElementById('summarize-btn');
+    const pageMeta = document.getElementById('page-meta');
+    const output = document.getElementById('output');
+
+    if (activeTab === 'file') {
+      fileSection.classList.remove('hidden');
+      summarizeBtn.textContent = 'Summarise File';
+      pageMeta.classList.add('hidden'); // Hide page stats until file is processed
+      output.classList.add('hidden');
+    } else {
+      fileSection.classList.add('hidden');
+      summarizeBtn.textContent = 'Summarise Page';
+      // Re-run word meta for page to restore stats
+      (async () => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab || (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('about:')))) return;
+        try {
+          const results = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: extractWordMeta });
+          if (results?.[0]?.result?.wordCount > 0) {
+            document.getElementById('word-count').textContent = results[0].result.wordCount.toLocaleString() + ' words';
+            document.getElementById('read-time').textContent = results[0].result.readMinutes + ' min read';
+            pageMeta.classList.remove('hidden');
+          }
+        } catch (_) {}
+      })();
+    }
+  });
+});
+
+// ── File Handling & Parsing ────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // --- ADD THIS: Limit file size to 5MB ---
+  const MAX_SIZE_MB = 5;
+  if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+    document.getElementById('error').textContent = `File is too large. Please upload a file under ${MAX_SIZE_MB}MB.`;
+    document.getElementById('error').classList.remove('hidden');
+    e.target.value = ''; // Clear the input
+    return;
+  }
+
+  const fileNameEl = document.getElementById('file-name');
+  fileNameEl.textContent = `Selected: ${file.name}`;
+  fileNameEl.classList.remove('hidden');
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const text = event.target.result;
+    const parsed = parseFileContent(text, file.name);
+    fileParagraphs = parsed.paragraphs;
+  };
+  reader.readAsText(file);
+});
+
+function parseFileContent(text, fileName) {
+  let cleanText = text;
+  
+  // If VTT, strip headers, timestamps, and sequence numbers
+  if (fileName.toLowerCase().endsWith('.vtt')) {
+    cleanText = cleanText.replace(/^(WEBVTT|NOTE|STYLE|REGION).*?(\n\n|$)/gs, '');
+    cleanText = cleanText.replace(/^\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}.*$/gm, '');
+    cleanText = cleanText.replace(/^\d+\s*$/gm, '');
+  }
+
+  cleanText = cleanText.replace(/\r\n/g, '\n');
+  
+  // Split into paragraphs (try double newlines first, then single)
+  let rawParagraphs = cleanText.split(/\n\s*\n/).map(p => p.replace(/\n/g, ' ').trim()).filter(Boolean);
+  if (rawParagraphs.length <= 1) {
+    rawParagraphs = cleanText.split('\n').map(p => p.trim()).filter(Boolean);
+  }
+
+  const paragraphs = rawParagraphs.map(p => ({ text: p, isHeading: false }));
+  return { paragraphs };
+}
 
 // ── Bullet-count pill toggle ───────────────────────────────────────────────
 document.querySelectorAll('.pill').forEach(btn => {
@@ -89,22 +177,66 @@ document.getElementById('copy-btn').addEventListener('click', () => {
   });
 });
 
+// ── Helper to display results ──────────────────────────────────────────────
+function displayResults(res) {
+  const { bullets, wordCount, readMinutes } = res;
+  const metaEl = document.getElementById('page-meta');
+  const output = document.getElementById('output');
+  const errorEl = document.getElementById('error');
+  const summaryList = document.getElementById('summary-list');
+  const loading = document.getElementById('loading');
+  const btn = document.getElementById('summarize-btn');
+
+  loading.classList.add('hidden');
+  btn.disabled = false;
+
+  document.getElementById('word-count').textContent = wordCount.toLocaleString() + ' words';
+  document.getElementById('read-time').textContent = readMinutes + ' min read';
+  metaEl.classList.remove('hidden');
+
+  if (!bullets || bullets.length === 0 || (bullets.length === 1 && bullets[0].includes("doesn't contain enough text"))) {
+    errorEl.textContent = bullets[0] || 'No clear text content found to summarise.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  summaryList.innerHTML = '';
+  bullets.forEach(sentence => {
+    const li = document.createElement('li');
+    li.textContent = sentence;
+    summaryList.appendChild(li);
+  });
+  output.classList.remove('hidden');
+}
+
 // ── Main summarise action ──────────────────────────────────────────────────
 document.getElementById('summarize-btn').addEventListener('click', async () => {
-  const loading   = document.getElementById('loading');
-  const output    = document.getElementById('output');
-  const errorEl   = document.getElementById('error');
-  const summaryList = document.getElementById('summary-list');
-  const btn       = document.getElementById('summarize-btn');
+  const loading = document.getElementById('loading');
+  const output = document.getElementById('output');
+  const errorEl = document.getElementById('error');
+  const btn = document.getElementById('summarize-btn');
 
   loading.classList.remove('hidden');
   output.classList.add('hidden');
   errorEl.classList.add('hidden');
-  summaryList.innerHTML = '';
   btn.disabled = true;
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (activeTab === 'file') {
+    if (!fileParagraphs || fileParagraphs.length === 0) {
+      loading.classList.add('hidden');
+      errorEl.textContent = 'Please select a .txt or .vtt file first.';
+      errorEl.classList.remove('hidden');
+      btn.disabled = false;
+      return;
+    }
+    // Run locally on the parsed file content
+    const result = summariseFileParagraphs(fileParagraphs, bulletCount);
+    displayResults(result);
+    return;
+  }
 
+  // ── Page Tab Logic (Existing Injection) ────────────────────────────────
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('about:')))) {
     loading.classList.add('hidden');
     errorEl.textContent = 'Cannot summarise browser system pages.';
@@ -116,45 +248,30 @@ document.getElementById('summarize-btn').addEventListener('click', async () => {
   chrome.scripting.executeScript(
     { target: { tabId: tab.id }, func: extractAndSummarise, args: [bulletCount] },
     (results) => {
-      loading.classList.add('hidden');
-      btn.disabled = false;
-
       if (chrome.runtime.lastError || !results || !results[0] || !results[0].result) {
+        loading.classList.add('hidden');
+        btn.disabled = false;
         errorEl.textContent = 'Failed to read page content. Try reloading the page.';
         errorEl.classList.remove('hidden');
         return;
       }
-
-      const { bullets, wordCount, readMinutes } = results[0].result;
-
-      // Update page-meta badge
-      const metaEl = document.getElementById('page-meta');
-      document.getElementById('word-count').textContent = wordCount.toLocaleString() + ' words';
-      document.getElementById('read-time').textContent = readMinutes + ' min read';
-      metaEl.classList.remove('hidden');
-
-      if (!bullets || bullets.length === 0) {
-        errorEl.textContent = 'No clear text content found to summarise.';
-        errorEl.classList.remove('hidden');
-        return;
-      }
-
-      bullets.forEach(sentence => {
-        const li = document.createElement('li');
-        li.textContent = sentence;
-        summaryList.appendChild(li);
-      });
-
-      output.classList.remove('hidden');
+      displayResults(results[0].result);
     }
   );
 });
 
 // ── Injected page function — runs inside the active tab ────────────────────
-// Must be self-contained: no closures over popup scope.
 function extractAndSummarise(maxBullets) {
+  // [Keep your existing extractAndSummarise function exactly as it was here]
+  // It contains STOP, tokenise, extractText, buildIndex, scoreSentences, chunkAndReduce
+  // ... (omitted for brevity, keep your original code for this function) ...
+  
+  // Ensure it returns { bullets, wordCount, readMinutes }
+}
 
-  // ── Stop-word list (~200 common English words) ───────────────────────────
+// ── Local TF-IDF function for File Uploads ─────────────────────────────────
+// Duplicated logic to avoid CSP/serialization issues with chrome.scripting
+function summariseFileParagraphs(paragraphs, maxBullets) {
   const STOP = new Set([
     'a','about','above','after','again','against','all','also','am','an','and',
     'any','are','aren','as','at','be','because','been','before','being','below',
@@ -223,55 +340,13 @@ function extractAndSummarise(maxBullets) {
     'plural','anger','claim','possible','gold','milk','quiet','natural'
   ]);
 
-  // ── Tokenise a string into meaningful terms ──────────────────────────────
   function tokenise(text) {
     return (text.toLowerCase().match(/\b[a-z]{3,}\b/g) || [])
       .filter(w => !STOP.has(w));
   }
 
-  // ── Extract text from the page ───────────────────────────────────────────
-  function extractText() {
-    const avoid = new Set(['nav','header','footer','aside','script','style',
-      'noscript','form','figure','figcaption','button','select','option',
-      'menu','menuitem','dialog']);
-
-    // Prefer semantic content zones
-    const zones = document.querySelectorAll('article, [role="main"], main');
-    let paragraphs = [];
-
-    if (zones.length > 0) {
-      zones.forEach(zone => {
-        zone.querySelectorAll('p, h1, h2, h3').forEach(el => {
-          if (!avoid.has(el.tagName.toLowerCase())) {
-            const t = el.innerText.trim();
-            if (t) paragraphs.push({ text: t, isHeading: /^h[1-3]$/i.test(el.tagName) });
-          }
-        });
-      });
-    }
-
-    // Fallback: all paragraphs in body
-    if (paragraphs.length === 0) {
-      document.querySelectorAll('p').forEach(el => {
-        let parent = el.parentElement;
-        let skip = false;
-        while (parent) {
-          if (avoid.has(parent.tagName.toLowerCase())) { skip = true; break; }
-          parent = parent.parentElement;
-        }
-        if (!skip) {
-          const t = el.innerText.trim();
-          if (t) paragraphs.push({ text: t, isHeading: false });
-        }
-      });
-    }
-
-    return paragraphs;
-  }
-
-  // ── Build an inverted index: term → Set of sentence indices ─────────────
   function buildIndex(sentences) {
-    const index = new Map(); // term → array of sentence indices
+    const index = new Map();
     sentences.forEach((s, i) => {
       const terms = new Set(tokenise(s.text));
       terms.forEach(term => {
@@ -282,9 +357,7 @@ function extractAndSummarise(maxBullets) {
     return index;
   }
 
-  // ── Score sentences via TF-IDF with inverted index (O(n)) ───────────────
   function scoreSentences(sentences, index, totalSentences) {
-    // IDF: log(total / df)
     const idf = new Map();
     index.forEach((list, term) => {
       idf.set(term, Math.log((totalSentences + 1) / (list.length + 1)) + 1);
@@ -294,7 +367,6 @@ function extractAndSummarise(maxBullets) {
       const terms = tokenise(s.text);
       if (terms.length === 0) return { ...s, score: 0, index: i };
 
-      // TF: count of each term in this sentence
       const tf = new Map();
       terms.forEach(t => tf.set(t, (tf.get(t) || 0) + 1));
 
@@ -303,14 +375,9 @@ function extractAndSummarise(maxBullets) {
         score += (count / terms.length) * (idf.get(term) || 1);
       });
 
-      // Heading bonus
       if (s.isHeading) score *= 1.5;
-
-      // Length penalty (ideal: 10–40 words)
       const wc = s.text.split(/\s+/).length;
       if (wc < 8 || wc > 50) score *= 0.3;
-
-      // Position bias — earlier content scores higher (journalistic pyramid)
       const positionBias = 1 - (i / totalSentences) * 0.4;
       score *= positionBias;
 
@@ -318,12 +385,7 @@ function extractAndSummarise(maxBullets) {
     });
   }
 
-  // ── Paragraph-first chunking for large pages ─────────────────────────────
-  // Groups paragraphs, scores them, then only flattens sentences from the
-  // top-scoring paragraphs — keeps the candidate pool small regardless of
-  // total page length.
   function chunkAndReduce(paragraphs, targetSentences) {
-    // Score each paragraph block by keyword density
     const allText = paragraphs.map(p => p.text).join(' ');
     const globalTerms = tokenise(allText);
     const globalFreq = new Map();
@@ -339,12 +401,10 @@ function extractAndSummarise(maxBullets) {
       return { ...p, score, origIndex: i };
     });
 
-    // Keep top 60% of paragraphs by score, preserve order
     const sorted = [...scored].sort((a, b) => b.score - a.score);
     const keep = Math.max(Math.ceil(sorted.length * 0.6), Math.ceil(targetSentences * 2));
     const keepSet = new Set(sorted.slice(0, keep).map(p => p.origIndex));
 
-    // Flatten kept paragraphs into sentences, preserving document order
     const sentences = [];
     scored.forEach((p, i) => {
       if (!keepSet.has(i)) return;
@@ -355,21 +415,15 @@ function extractAndSummarise(maxBullets) {
     return sentences;
   }
 
-  // ── Main ─────────────────────────────────────────────────────────────────
-  const paragraphs = extractText();
-  if (paragraphs.length === 0) {
-    return { bullets: ["Page doesn't contain enough text to summarise."], wordCount: 0, readMinutes: 0 };
-  }
-
+  // Main logic for file
   const allText = paragraphs.map(p => p.text).join(' ');
   const wordCount = allText.split(/\s+/).filter(Boolean).length;
   const readMinutes = Math.max(1, Math.round(wordCount / 200));
 
   if (wordCount < 80) {
-    return { bullets: ["Page doesn't contain enough text to summarise."], wordCount, readMinutes };
+    return { bullets: ["File doesn't contain enough text to summarise."], wordCount, readMinutes };
   }
 
-  // For large pages, use paragraph chunking first to reduce candidate set
   const LARGE_PAGE_THRESHOLD = 1500;
   let sentences;
   if (wordCount > LARGE_PAGE_THRESHOLD) {
@@ -383,11 +437,7 @@ function extractAndSummarise(maxBullets) {
   }
 
   if (sentences.length <= maxBullets) {
-    return {
-      bullets: sentences.map(s => s.text).filter(Boolean),
-      wordCount,
-      readMinutes
-    };
+    return { bullets: sentences.map(s => s.text).filter(Boolean), wordCount, readMinutes };
   }
 
   const index = buildIndex(sentences);

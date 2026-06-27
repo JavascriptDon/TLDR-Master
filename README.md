@@ -1,20 +1,22 @@
 # TLDR Web Summariser
-A Chrome extension that summarises the current web page instantly, without API keys or external dependencies.
+A Chrome extension that summarises web pages, text files, and video transcripts instantly, without API keys or external dependencies.
 
 ## Extension Overview
-This extension provides a lightweight, fully client‑side summarisation tool directly inside a Chrome popup. It works by injecting analysis functions into the active browser tab using chrome.scripting.executeScript, allowing it to read and process visible page content without external APIs.
+This extension provides a lightweight, fully client‑side summarisation tool directly inside a Chrome popup. It features two distinct modes: a **Page mode** that injects analysis functions into the active browser tab to read visible content, and a **File mode** that processes uploaded .txt or .vtt files locally within the popup.
 
 ---
 
 ## 📌 Core Features
 
+- **Dual-mode processing**: Summarise the active web page *or* upload local `.txt` and `.vtt` (video transcript) files.
+- **Smart VTT parsing**: Automatically strips timestamps, headers, and sequence numbers from subtitle files before summarising.
 - **Extracts readable text** from the current webpage.
 - **Counts total words** and **estimates reading time** based on ~200 wpm.
 - **Generates a concise bullet‑point summary** using TF‑IDF scoring, heading weighting, and position bias.
 - **Allows the user to choose the number of summary bullets** (e.g., 3, 5, 7).
 - **Copies the generated summary to the clipboard** in a clean bullet‑list format.
 - **Supports light/dark theme toggling**, with the user’s preference stored in `chrome.storage.local`.
-- **Runs entirely in the browser**, with no server calls or external dependencies.
+- **Runs entirely in the browser**, with no server 
 
 ---
 
