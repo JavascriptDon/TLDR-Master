@@ -4,6 +4,10 @@ A Chrome extension that summarises web pages, text files, and video transcripts 
 ## Extension Overview
 This extension provides a lightweight, fully client‑side summarisation tool directly inside a Chrome popup. It features two distinct modes: a **Page mode** that injects analysis functions into the active browser tab to read visible content, and a **File mode** that processes uploaded .txt or .vtt files locally within the popup.
 
+
+https://github.com/user-attachments/assets/5558ddd9-e955-4ebd-9fd7-bddb1e44cb4a
+
+
 ---
 
 ## 📌 Core Features
