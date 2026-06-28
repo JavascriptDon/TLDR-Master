@@ -246,27 +246,49 @@ document.getElementById('summarize-btn').addEventListener('click', async () => {
   }
 
   chrome.scripting.executeScript(
-    { target: { tabId: tab.id }, func: extractAndSummarise, args: [bulletCount] },
+    { target: { tabId: tab.id }, func: extractAndSummarise },
     (results) => {
-      if (chrome.runtime.lastError || !results || !results[0] || !results[0].result) {
+      if (chrome.runtime.lastError || !results || !results[0] || !results[0].result?.paragraphs?.length) {
         loading.classList.add('hidden');
         btn.disabled = false;
         errorEl.textContent = 'Failed to read page content. Try reloading the page.';
         errorEl.classList.remove('hidden');
         return;
       }
-      displayResults(results[0].result);
+      displayResults(summariseFileParagraphs(results[0].result.paragraphs, bulletCount));
     }
   );
 });
 
 // ── Injected page function — runs inside the active tab ────────────────────
-function extractAndSummarise(maxBullets) {
-  // [Keep your existing extractAndSummarise function exactly as it was here]
-  // It contains STOP, tokenise, extractText, buildIndex, scoreSentences, chunkAndReduce
-  // ... (omitted for brevity, keep your original code for this function) ...
-  
-  // Ensure it returns { bullets, wordCount, readMinutes }
+function extractAndSummarise() {
+  const avoid = new Set(['nav','header','footer','aside','script','style',
+    'noscript','form','select','option','menu','dialog']);
+  const paragraphs = [];
+
+  function hidden(el) {
+    const style = window.getComputedStyle(el);
+    return style.display === 'none' || style.visibility === 'hidden';
+  }
+
+  function blocked(el) {
+    for (let p = el; p; p = p.parentElement) {
+      if (avoid.has(p.tagName.toLowerCase()) || hidden(p)) return true;
+    }
+    return false;
+  }
+
+  const roots = document.querySelectorAll('article, [role="main"], main');
+  const scopes = roots.length ? roots : [document.body];
+  scopes.forEach(scope => {
+    scope.querySelectorAll('p, h1, h2, h3').forEach(el => {
+      if (blocked(el)) return;
+      const text = el.innerText.replace(/\s+/g, ' ').trim();
+      if (text) paragraphs.push({ text, isHeading: /^H[1-3]$/.test(el.tagName) });
+    });
+  });
+
+  return { paragraphs };
 }
 
 // ── Local TF-IDF function for File Uploads ─────────────────────────────────
